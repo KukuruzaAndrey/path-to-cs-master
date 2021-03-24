@@ -189,14 +189,14 @@ fun officiate (cs, ms, goal) =
     let
         fun step (ms, cs, held_cards) =
             case (ms, cs) of
-                ([], _)               => score(held_cards, goal)
+                ([], _)               => held_cards
               | ((Discard c)::ms', _) => step(ms', cs, remove_card(held_cards, c, IllegalMove))
-              | (Draw::_, [])         => score(held_cards, goal)
+              | (Draw::_, [])         => held_cards
               | (Draw::ms', c::cs')   => if sum_cards(c::held_cards) > goal
-                                         then score(c::held_cards, goal)
+                                         then c::held_cards
                                          else step(ms', cs', c::held_cards)
     in
-        step(ms, cs, [])
+        score(step(ms, cs, []), goal)
     end
 
 (* 3. Challenge Problems:
