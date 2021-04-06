@@ -30,9 +30,11 @@ when its first argument is stricly greater than its second), then the function r
 behavior as longest_string1.
 • longest_string3 and longest_string4 are defined with val-bindings and partial applications
 of longest_string_helper. *)
-fun longest_string_helper compare = List.foldl (fn (currStr, longest) => if compare(String.size currStr, String.size longest)
-                                                           then currStr
-                                                           else longest) ""
+fun longest_string_helper compare =
+    List.foldl
+        (fn (currStr, longest) => if compare(String.size currStr, String.size longest)
+                                  then currStr
+                                  else longest) ""
 val longest_string3 = longest_string_helper (fn (a, b) => a > b)
 val longest_string4 = longest_string_helper (fn (a, b) => a >= b)
 
@@ -129,7 +131,7 @@ val count_wildcards = g (fn () => 1) (fn var_name => 0)
 the number of Wildcard patterns it contains plus the sum of the string lengths of all the variables
 in the variable patterns it contains. (Use String.size. We care only about variable names; the
 constructor names are not relevant.) *)
-val count_wild_and_variable_lengths = g (fn () => 1) (fn var_name => String.size var_name)
+val count_wild_and_variable_lengths = g (fn () => 1) String.size
 
 (* (c) Use g to define a function count_some_var that takes a string and a pattern (as a pair) and
 returns the number of times the string appears as a variable in the pattern. We care only about
@@ -147,13 +149,13 @@ fun check_pat p =
     let
         fun var_names (p, acc) =
             case p of
-                Variable x     => x::acc
-              | TupleP ps      => (List.foldl var_names [] ps) @ acc
-              | _              => acc
+                Variable x             => x::acc
+              | TupleP ps              => (List.foldl var_names [] ps) @ acc
+              | ConstructorP (name, p) => var_names (p, acc)
+              | _                      => acc
         fun has_repeats sl =
             case sl of
                 []     => false
-              | [s]    => false
               | s::sl' => List.exists (fn str => str = s) sl' orelse has_repeats sl'
     in
         not (has_repeats (var_names (p, [])))
@@ -169,8 +171,8 @@ not requiring all_answers and ListPair.zip here, but they make it easier. *)
 fun match (valu, pat) =
       case (valu, pat) of
            (_, Wildcard)         => SOME []
-         | (Const c, Variable v) => SOME [(v, Const c)]
          | (Unit, UnitP)         => SOME []
+         | (vl, Variable v)      => SOME [(v, vl)]
          | (Const v, ConstP p)   => if v = p
                                     then SOME []
                                     else NONE
@@ -188,8 +190,12 @@ fun match (valu, pat) =
 lst is the list of bindings for the first pattern in the list that matches. Use first_answer and a
 handle-expression. Hints: Sample solution is 3 lines. *)
 fun first_match valu pl =
-    SOME (first_answer match (List.map (fn x => (valu, x)) pl))
-    handle NoAnswer => NONE
+    let
+        fun match_value p = match(valu, p)
+    in
+        SOME (first_answer match_value pl)
+        handle NoAnswer => NONE
+    end
 
 (* (Challenge Problem) Write a function typecheck_patterns that “type-checks” a pattern list. Types
 for our made-up pattern language are defined by datatype typ
@@ -209,5 +215,73 @@ datatype typ = Anything
          | IntT
          | TupleT of typ list
          | Datatype of string
-         
-fun typecheck_patterns
+
+exception NotFoundType
+fun typecheck_patterns (type_list, pat_list) =
+    let
+        fun typeof (constructor_name, type_list) =
+            case type_list of
+                [] => raise NotFoundType
+              | (constr_n, datatyp, _)::xs => if constr_n = constructor_name
+                                              then datatyp
+                                              else typeof (constructor_name, xs)
+
+        fun same_datatype (constructor_name1, constructor_name2) =
+            typeof (constructor_name1, type_list) = typeof (constructor_name2, type_list)
+        fun all_patterns simlify ls =
+            let 
+               fun aux (ls, acc) =
+                   case ls of
+                        []    => SOME acc
+                      | x::xs => case simlify x of
+                                    NONE   => NONE
+                                  | SOME v => aux(xs, acc @ [v])
+            in
+                aux(ls, [])
+            end
+
+        fun simplify_pat (p1, p2) =
+            case (p1, p2) of
+                (Wildcard, pat) => SOME pat
+              | (pat, Wildcard) => SOME pat
+              | (Variable v, pat) => SOME pat
+              | (pat, Variable v) => SOME pat
+              | (UnitP, UnitP)  => SOME UnitP
+              | (ConstP i1, ConstP i2) => SOME (ConstP i1)
+              | (TupleP pl1, TupleP pl2) => if List.length pl1 = List.length pl2
+                                            then
+                                                let
+                                                    val result_p = all_patterns simplify_pat (ListPair.zip (pl1, pl2))
+                                                in
+                                                    case result_p of                                               
+                                                        SOME p => SOME (TupleP p)
+                                                      | NONE => NONE
+                                                end
+                                            else NONE
+              | (ConstructorP (s1, p1), ConstructorP (s2, p2)) => if same_datatype (s1, s2)
+                                                                  then SOME (ConstructorP (s1, p1))
+                                                                  else NONE
+              | _ => NONE
+
+        fun simplify_all_patterns patterns =
+            case patterns of
+                [x]      => SOME x
+              | x::[y]   => simplify_pat (x,y)
+              | x::y::xs => case simplify_pat(x,y) of
+                                NONE   => NONE
+                              | SOME p => simplify_all_patterns (p::xs)
+
+        fun produce_typ p =
+            case p of
+                Wildcard => Anything
+              | Variable s => Anything
+              | UnitP => UnitT
+              | ConstP i => IntT
+              | TupleP pl => TupleT (List.map produce_typ pl)
+              | ConstructorP (s, p) => Datatype (typeof (s, type_list))
+    in
+            case simplify_all_patterns pat_list of
+                NONE   => NONE
+              | SOME p => SOME (produce_typ p)
+    end
+        
