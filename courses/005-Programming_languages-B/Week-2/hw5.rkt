@@ -286,8 +286,62 @@
 
 ;; We will test this function directly, so it must do
 ;; as described in the assignment
-(define (compute-free-vars e) "CHANGE")
-
+(define (compute-free-vars e)
+  (cond [(or (var? e)
+             (add? e)
+             (int? e)
+             (closure? e)
+             (aunit? e)) 
+         e]
+        [(fun? e) (closure env e)]
+        [(ifgreater? e)
+         (let ([v1 (eval-under-env (ifgreater-e1 e) env)]
+               [v2 (eval-under-env (ifgreater-e2 e) env)])
+           (cond [(not (and (int? v1) (int? v2)))
+                  (error "MUPL ifgreater applied to non-number")]
+                 [(> (int-num v1) (int-num v2))
+                  (eval-under-env (ifgreater-e3 e) env)]
+                 [#t (eval-under-env (ifgreater-e4 e) env)]))]
+        [(mlet? e)
+         (let ([v (eval-under-env (mlet-e e) env)])
+           (eval-under-env (mlet-body e) 
+                           (cons (cons (mlet-var e) v) 
+                                 env)))]
+        [(call? e)
+         (let ([cl (eval-under-env (call-funexp e) env)]
+               [arg (eval-under-env (call-actual e) env)])
+           (if (closure? cl)
+               (letrec ([fun (closure-fun cl)]
+                        [fun-env (cons (cons (fun-formal fun) arg)
+                                       (if (fun-nameopt fun)
+                                           (cons (cons (fun-nameopt fun) cl) (closure-env cl))
+                                           (closure-env cl)))])
+                 (eval-under-env (fun-body fun) fun-env))
+               (error (format "MUPL function call applied to non-function: ~v" cl))))]
+        [(apair? e) 
+         (let ([v1 (eval-under-env (apair-e1 e) env)]
+               [v2 (eval-under-env (apair-e2 e) env)])
+           (apair v1 v2))]
+        [(fst? e)
+         (let ([pr (eval-under-env (fst-e e) env)])
+           (if (apair? pr)
+               (apair-e1 pr)
+               (error (format "MUPL fst applied to non-pair: ~v" pr))))]
+        [(snd? e)
+         (let ([pr (eval-under-env (snd-e e) env)])
+           (if (apair? pr)
+               (apair-e2 pr)
+               (error "MUPL snd applied to non-pair")))]
+        [(isaunit? e)
+         (let ([un (eval-under-env (isaunit-e e) env)])
+           (if (aunit? un)
+               (int 1)
+               (int 0)))]
+        [#t (error (format "bad MUPL expression: ~v" e))]))
+;(displayln (compute-free-vars (var "a"))) ; (var "a")
+;(displayln (compute-free-vars (int 17))) ; (int 17)
+;(displayln (compute-free-vars (add (int 5) (int 6))) ; (add (int 5) (int 6))
+;(displayln (compute-free-vars (fun "add1" "x" (add (var "x") (int 1)))) ; (fun-challenge "add1" "x" (add (var "x") (int 1)) (set null))
 ;; Do NOT share code with eval-under-env because that will make
 ;; auto-grading and peer assessment more difficult, so
 ;; copy most of your interpreter here and make minor changes
