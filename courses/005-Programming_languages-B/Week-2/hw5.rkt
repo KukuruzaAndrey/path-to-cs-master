@@ -116,9 +116,9 @@
 ;; We will test eval-under-env by calling it directly even though
 ;; "in real life" it would be a helper function of eval-exp.
 (define (eval-under-env e env)
-  (cond [(var? e) 
+  (cond [(var? e)
          (envlookup env (var-string e))]
-        [(add? e) 
+        [(add? e)
          (let ([v1 (eval-under-env (add-e1 e) env)]
                [v2 (eval-under-env (add-e2 e) env)])
            (if (and (int? v1)
@@ -156,7 +156,7 @@
                                            (closure-env cl)))])
                  (eval-under-env (fun-body fun) fun-env))
                (error (format "MUPL function call applied to non-function: ~v" cl))))]
-        [(apair? e) 
+        [(apair? e)
          (let ([v1 (eval-under-env (apair-e1 e) env)]
                [v2 (eval-under-env (apair-e2 e) env)])
            (apair v1 v2))]
@@ -281,72 +281,193 @@
             (call (var "map") (fun #f "x" (add (var "x") (var "int")))))))
 
 ;; Challenge Problem
+; Write a second version of eval-exp (bound to eval-exp-c) that builds closures
+; with smaller environments: When building a closure, it uses an environment that is like the current
+; environment but holds only variables that are free variables in the function part of the closure. (A free
+; variable is a variable that appears in the function without being under some shadowing binding for the
+; same variable.)
+; Avoid computing a function’s free variables more than once. Do this by writing a function compute-free-vars
+; that takes an expression and returns a different expression that uses fun-challenge everywhere in
+; place of fun. The new struct fun-challenge (provided to you; do not change it) has a field freevars
+; to store exactly the set of free variables for the function. Store this set as a Racket set of Racket strings.
+; (Sets are predefined in Racket’s standard library; consult the documentation for useful functions such
+; as set, set-add, set-member?, set-remove, set-union, and any other functions you wish.)
+; You must have a top-level function compute-free-vars that works as just described — storing the
+; free variables of each function in the freevars field — so the grader can test it directly. Then write a
+; new “main part” of the interpreter that expects the sort of mupl expression that compute-free-vars
+; returns. The case for function definitions is the interesting one.
 
 (struct fun-challenge (nameopt formal body freevars) #:transparent) ;; a recursive(?) 1-argument function
+
+
+; helper for compute free variables in fun expression
+; uses mutual recursion to handle case where fun body contains another fun expression
+(define (compute-fun-free-vars f)
+    (letrec ([fun-free-vars 
+              (lambda (f)
+                (let ([nameopt (fun-nameopt f)]
+                      [formal (fun-formal f)]
+                      [body (fun-body f)])
+                    (set-remove
+                        (set-remove (expression-vars body)
+                                    nameopt)
+                        formal)))]
+             [expression-vars
+              (lambda (e)
+                (cond [(or (int? e)
+                           (closure? e)
+                           (aunit? e)) 
+                       (set)]
+                      [(var? e) (set (var-string e))]
+                      [(add? e) 
+                       (set-union (expression-vars (add-e1 e))
+                                  (expression-vars (add-e2 e)))]
+                      [(fun? e)
+                       (fun-free-vars e)]
+                      [(ifgreater? e)
+                       (set-union (expression-vars (ifgreater-e1 e))
+                                  (expression-vars (ifgreater-e2 e))
+                                  (expression-vars (ifgreater-e3 e))
+                                  (expression-vars (ifgreater-e4 e)))]
+                      [(mlet? e)
+                       (set-union (expression-vars (mlet-e e))
+                                  (expression-vars (mlet-body e)))]
+                      [(call? e)
+                       (set-union (expression-vars (call-funexp e))
+                                  (expression-vars (call-actual e)))]
+                      [(apair? e)
+                       (set-union (expression-vars (apair-e1 e))
+                                  (expression-vars (apair-e2 e)))]
+                      [(fst? e)
+                       (set (expression-vars (fst-e e)))]
+                      [(snd? e)
+                       (set (expression-vars (snd-e e)))]
+                      [(isaunit? e)
+                       (set (expression-vars (isaunit-e e)))]))])
+        (fun-free-vars f)))
+;(displayln (compute-fun-free-vars (fun #f "x" (add (var "x") (var "y"))))) ; (set "y")
+;(displayln (compute-fun-free-vars (fun "aux" "x" (ifgreater (var "x") (var "b") (int 0) (add (int 1) (call (var "aux") (add (var "a") (var "x")))))))) ; (set "b" "a")
+;(displayln (compute-fun-free-vars (fun #f "x" (add (var "a") (call (fun #f "y" (add (var "x") (var "b"))) (var "c")))))) ; (set "a" "b" "c")
 
 ;; We will test this function directly, so it must do
 ;; as described in the assignment
 (define (compute-free-vars e)
   (cond [(or (var? e)
-             (add? e)
              (int? e)
              (closure? e)
              (aunit? e)) 
          e]
-        [(fun? e) (closure env e)]
+        [(add? e) 
+         (add (compute-free-vars (add-e1 e))
+              (compute-free-vars (add-e2 e)))]
+        [(fun? e)
+         (fun-challenge (fun-nameopt e)
+                        (fun-formal e)
+                        (fun-body e)
+                        (compute-fun-free-vars e))]
         [(ifgreater? e)
-         (let ([v1 (eval-under-env (ifgreater-e1 e) env)]
-               [v2 (eval-under-env (ifgreater-e2 e) env)])
+         (ifgreater (compute-free-vars (ifgreater-e1 e))
+                    (compute-free-vars (ifgreater-e2 e))
+                    (compute-free-vars (ifgreater-e3 e))
+                    (compute-free-vars (ifgreater-e4 e)))]
+        [(mlet? e)
+         (mlet (mlet-var e)
+               (compute-free-vars (mlet-e e))
+               (compute-free-vars (mlet-body e)))]
+        [(call? e)
+         (call (compute-free-vars (call-funexp e))
+               (compute-free-vars (call-actual e)))]
+        [(apair? e)
+         (apair (compute-free-vars (apair-e1 e))
+                (compute-free-vars (apair-e2 e)))]
+        [(fst? e)
+         (fst (compute-free-vars (fst-e e)))]
+        [(snd? e)
+         (snd (compute-free-vars (snd-e e)))]
+        [(isaunit? e)
+         (snd (compute-free-vars (isaunit-e e)))]))
+;(displayln (compute-free-vars (var "a"))) ; (var "a")
+;(displayln (compute-free-vars (int 17))) ; (int 17)
+;(displayln (compute-free-vars (add (int 5) (int 6)))) ; (add (int 5) (int 6))
+;(displayln (compute-free-vars (fun "add1" "x" (add (var "x") (int 1))))) ; (fun-challenge "add1" "x" (add (var "x") (int 1)) (set))
+;(displayln (compute-free-vars (fun #f "x" (add (var "x") (int 1))))) ; (fun-challenge #f "x" (add (var "x") (int 1)) (set))
+;(displayln (compute-free-vars (fun #f "x" (add (var "x") (var "y"))))) ; (fun-challenge #f "x" (add (var "x") (var "y")) (set "y"))
+;(displayln (compute-free-vars (fun #f "x" (add (var "y") (var "y"))))) ; (fun-challenge #f "x" (add (var "y") (var "y")) (set "y"))
+;(displayln (compute-free-vars (fun "aux" "x" (ifgreater (var "x") (int 15) (int 0) (add (int 1) (call (var "aux") (add (int 1) (var "x"))))))))
+;;(fun-challenge "aux" "x" (ifgreater (var "x") (int 15) (int 0) (add (int 1) (call (var "aux") (add (int 1) (var "x"))))) (set))
+;(displayln (compute-free-vars (fun "aux" "x" (ifgreater (var "x") (var "b") (int 0) (add (int 1) (call (var "aux") (add (var "a") (var "x"))))))))
+;;(fun-challenge "aux" "x" (ifgreater (var "x") (var "b") (int 0) (add (int 1) (call (var "aux") (add (var "a") (var "x"))))) (set "a" "b"))
+
+
+; helper for compute smaller enviroment for closure
+(define (compute-minimal-env env vars)
+    (
+
+;; Do NOT share code with eval-under-env because that will make
+;; auto-grading and peer assessment more difficult, so
+;; copy most of your interpreter here and make minor changes
+(define (eval-under-env-c e env)
+  (cond [(var? e)
+         (envlookup env (var-string e))]
+        [(add? e)
+         (let ([v1 (eval-under-env-с (add-e1 e) env)]
+               [v2 (eval-under-env-с (add-e2 e) env)])
+           (if (and (int? v1)
+                    (int? v2))
+               (int (+ (int-num v1) 
+                       (int-num v2)))
+               (error "MUPL addition applied to non-number")))]
+        [(or (int? e)
+             (closure? e)
+             (aunit? e)) 
+         e]
+        [(fun-challenge? e) (closure (compute-minimal-env env
+                                                          (fun-challenge-freevars e))
+                                     e)]
+        [(ifgreater? e)
+         (let ([v1 (eval-under-env-с (ifgreater-e1 e) env)]
+               [v2 (eval-under-env-с (ifgreater-e2 e) env)])
            (cond [(not (and (int? v1) (int? v2)))
                   (error "MUPL ifgreater applied to non-number")]
                  [(> (int-num v1) (int-num v2))
-                  (eval-under-env (ifgreater-e3 e) env)]
-                 [#t (eval-under-env (ifgreater-e4 e) env)]))]
+                  (eval-under-env-с (ifgreater-e3 e) env)]
+                 [#t (eval-under-env-с (ifgreater-e4 e) env)]))]
         [(mlet? e)
-         (let ([v (eval-under-env (mlet-e e) env)])
-           (eval-under-env (mlet-body e) 
+         (let ([v (eval-under-env-с (mlet-e e) env)])
+           (eval-under-env-с (mlet-body e) 
                            (cons (cons (mlet-var e) v) 
                                  env)))]
         [(call? e)
-         (let ([cl (eval-under-env (call-funexp e) env)]
-               [arg (eval-under-env (call-actual e) env)])
+         (let ([cl (eval-under-env-с (call-funexp e) env)]
+               [arg (eval-under-env-с (call-actual e) env)])
            (if (closure? cl)
                (letrec ([fun (closure-fun cl)]
-                        [fun-env (cons (cons (fun-formal fun) arg)
-                                       (if (fun-nameopt fun)
-                                           (cons (cons (fun-nameopt fun) cl) (closure-env cl))
+                        [fun-env (cons (cons (fun-challenge-formal fun) arg)
+                                       (if (fun-challenge-nameopt fun)
+                                           (cons (cons (fun-challenge-nameopt fun) cl) (closure-env cl))
                                            (closure-env cl)))])
-                 (eval-under-env (fun-body fun) fun-env))
+                 (eval-under-env-с (fun-challenge-body fun) fun-env))
                (error (format "MUPL function call applied to non-function: ~v" cl))))]
-        [(apair? e) 
-         (let ([v1 (eval-under-env (apair-e1 e) env)]
-               [v2 (eval-under-env (apair-e2 e) env)])
+        [(apair? e)
+         (let ([v1 (eval-under-env-с (apair-e1 e) env)]
+               [v2 (eval-under-env-с (apair-e2 e) env)])
            (apair v1 v2))]
         [(fst? e)
-         (let ([pr (eval-under-env (fst-e e) env)])
+         (let ([pr (eval-under-env-с (fst-e e) env)])
            (if (apair? pr)
                (apair-e1 pr)
                (error (format "MUPL fst applied to non-pair: ~v" pr))))]
         [(snd? e)
-         (let ([pr (eval-under-env (snd-e e) env)])
+         (let ([pr (eval-under-env-с (snd-e e) env)])
            (if (apair? pr)
                (apair-e2 pr)
                (error "MUPL snd applied to non-pair")))]
         [(isaunit? e)
-         (let ([un (eval-under-env (isaunit-e e) env)])
+         (let ([un (eval-under-env-с (isaunit-e e) env)])
            (if (aunit? un)
                (int 1)
                (int 0)))]
         [#t (error (format "bad MUPL expression: ~v" e))]))
-;(displayln (compute-free-vars (var "a"))) ; (var "a")
-;(displayln (compute-free-vars (int 17))) ; (int 17)
-;(displayln (compute-free-vars (add (int 5) (int 6))) ; (add (int 5) (int 6))
-;(displayln (compute-free-vars (fun "add1" "x" (add (var "x") (int 1)))) ; (fun-challenge "add1" "x" (add (var "x") (int 1)) (set null))
-;; Do NOT share code with eval-under-env because that will make
-;; auto-grading and peer assessment more difficult, so
-;; copy most of your interpreter here and make minor changes
-(define (eval-under-env-c e env) "CHANGE")
-
 ;; Do NOT change this
 (define (eval-exp-c e)
   (eval-under-env-c (compute-free-vars e) null))
