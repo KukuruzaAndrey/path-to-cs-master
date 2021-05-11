@@ -401,7 +401,9 @@
 
 ; helper for compute smaller enviroment for closure
 (define (compute-minimal-env env vars)
-    (
+    (filter (lambda (env-var)
+              (set-member? vars (car env-var)))
+            env))
 
 ;; Do NOT share code with eval-under-env because that will make
 ;; auto-grading and peer assessment more difficult, so
@@ -421,9 +423,10 @@
              (closure? e)
              (aunit? e)) 
          e]
-        [(fun-challenge? e) (closure (compute-minimal-env env
-                                                          (fun-challenge-freevars e))
-                                     e)]
+        [(fun-challenge? e)
+         (closure (compute-minimal-env env
+                                       (fun-challenge-freevars e))
+                  e)]
         [(ifgreater? e)
          (let ([v1 (eval-under-env-с (ifgreater-e1 e) env)]
                [v2 (eval-under-env-с (ifgreater-e2 e) env)])
