@@ -412,8 +412,8 @@
   (cond [(var? e)
          (envlookup env (var-string e))]
         [(add? e)
-         (let ([v1 (eval-under-env-с (add-e1 e) env)]
-               [v2 (eval-under-env-с (add-e2 e) env)])
+         (let ([v1 (eval-under-env-c (add-e1 e) env)]
+               [v2 (eval-under-env-c (add-e2 e) env)])
            (if (and (int? v1)
                     (int? v2))
                (int (+ (int-num v1) 
@@ -428,45 +428,45 @@
                                        (fun-challenge-freevars e))
                   e)]
         [(ifgreater? e)
-         (let ([v1 (eval-under-env-с (ifgreater-e1 e) env)]
-               [v2 (eval-under-env-с (ifgreater-e2 e) env)])
+         (let ([v1 (eval-under-env-c (ifgreater-e1 e) env)]
+               [v2 (eval-under-env-c (ifgreater-e2 e) env)])
            (cond [(not (and (int? v1) (int? v2)))
                   (error "MUPL ifgreater applied to non-number")]
                  [(> (int-num v1) (int-num v2))
-                  (eval-under-env-с (ifgreater-e3 e) env)]
-                 [#t (eval-under-env-с (ifgreater-e4 e) env)]))]
+                  (eval-under-env-c (ifgreater-e3 e) env)]
+                 [#t (eval-under-env-c (ifgreater-e4 e) env)]))]
         [(mlet? e)
-         (let ([v (eval-under-env-с (mlet-e e) env)])
-           (eval-under-env-с (mlet-body e) 
+         (let ([v (eval-under-env-c (mlet-e e) env)])
+           (eval-under-env-c (mlet-body e) 
                            (cons (cons (mlet-var e) v) 
                                  env)))]
         [(call? e)
-         (let ([cl (eval-under-env-с (call-funexp e) env)]
-               [arg (eval-under-env-с (call-actual e) env)])
+         (let ([cl (eval-under-env-c (call-funexp e) env)]
+               [arg (eval-under-env-c (call-actual e) env)])
            (if (closure? cl)
                (letrec ([fun (closure-fun cl)]
                         [fun-env (cons (cons (fun-challenge-formal fun) arg)
                                        (if (fun-challenge-nameopt fun)
                                            (cons (cons (fun-challenge-nameopt fun) cl) (closure-env cl))
                                            (closure-env cl)))])
-                 (eval-under-env-с (fun-challenge-body fun) fun-env))
+                 (eval-under-env-c (fun-challenge-body fun) fun-env))
                (error (format "MUPL function call applied to non-function: ~v" cl))))]
         [(apair? e)
-         (let ([v1 (eval-under-env-с (apair-e1 e) env)]
-               [v2 (eval-under-env-с (apair-e2 e) env)])
+         (let ([v1 (eval-under-env-c (apair-e1 e) env)]
+               [v2 (eval-under-env-c (apair-e2 e) env)])
            (apair v1 v2))]
         [(fst? e)
-         (let ([pr (eval-under-env-с (fst-e e) env)])
+         (let ([pr (eval-under-env-c (fst-e e) env)])
            (if (apair? pr)
                (apair-e1 pr)
                (error (format "MUPL fst applied to non-pair: ~v" pr))))]
         [(snd? e)
-         (let ([pr (eval-under-env-с (snd-e e) env)])
+         (let ([pr (eval-under-env-c (snd-e e) env)])
            (if (apair? pr)
                (apair-e2 pr)
                (error "MUPL snd applied to non-pair")))]
         [(isaunit? e)
-         (let ([un (eval-under-env-с (isaunit-e e) env)])
+         (let ([un (eval-under-env-c (isaunit-e e) env)])
            (if (aunit? un)
                (int 1)
                (int 0)))]
