@@ -315,7 +315,6 @@
              [expression-vars
               (lambda (e)
                 (cond [(or (int? e)
-                           (closure? e)
                            (aunit? e)) 
                        (set)]
                       [(var? e) (set (var-string e))]
@@ -331,7 +330,8 @@
                                   (expression-vars (ifgreater-e4 e)))]
                       [(mlet? e)
                        (set-union (expression-vars (mlet-e e))
-                                  (expression-vars (mlet-body e)))]
+                                  (set-remove (expression-vars (mlet-body e))
+                                              (mlet-var e)))]
                       [(call? e)
                        (set-union (expression-vars (call-funexp e))
                                   (expression-vars (call-actual e)))]
@@ -354,7 +354,6 @@
 (define (compute-free-vars e)
   (cond [(or (var? e)
              (int? e)
-             (closure? e)
              (aunit? e)) 
          e]
         [(add? e) 
@@ -363,7 +362,7 @@
         [(fun? e)
          (fun-challenge (fun-nameopt e)
                         (fun-formal e)
-                        (fun-body e)
+                        (compute-free-vars (fun-body e))
                         (compute-fun-free-vars e))]
         [(ifgreater? e)
          (ifgreater (compute-free-vars (ifgreater-e1 e))
@@ -397,7 +396,8 @@
 ;;(fun-challenge "aux" "x" (ifgreater (var "x") (int 15) (int 0) (add (int 1) (call (var "aux") (add (int 1) (var "x"))))) (set))
 ;(displayln (compute-free-vars (fun "aux" "x" (ifgreater (var "x") (var "b") (int 0) (add (int 1) (call (var "aux") (add (var "a") (var "x"))))))))
 ;;(fun-challenge "aux" "x" (ifgreater (var "x") (var "b") (int 0) (add (int 1) (call (var "aux") (add (var "a") (var "x"))))) (set "a" "b"))
-
+;(displayln (compute-free-vars (fun #f "y" (mlet "add1" (fun #f "x" (add (var "x") (var "z"))) (call (var "add1") (int 5))))))
+;;(fun-challenge #f "y" (mlet "add1" (fun-challenge #f "x" (add (var "x") (var "z")) (set "z")) (call (var "add1") (int 5))) (set "z")) 
 
 ; helper for compute smaller enviroment for closure
 (define (compute-minimal-env env vars)
@@ -489,5 +489,4 @@
 ;; Do NOT change this
 (define (eval-exp-c e)
   (eval-under-env-c (compute-free-vars e) null))
-(eval-exp-c (snd (apair (int 1) (int 2))))
-;(eval-exp-c (call (closure '() (fun #f "x" (add (var "x") (int 7)))) (int 1)))
+;(eval-exp-c (snd (apair (int 1) (int 2))))
